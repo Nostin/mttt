@@ -37,6 +37,7 @@ export default class SetName extends Component {
 				rematch_accepted: false,
 				opponent_disconnected: false,
 				opponent_name: null,
+				opponent_uid: null,
 				game_streak: []
 			}
 		else {
@@ -52,6 +53,7 @@ export default class SetName extends Component {
 				rematch_accepted: false,
 				opponent_disconnected: false,
 				opponent_name: null,
+				opponent_uid: null,
 				game_streak: []
 			}
 		}
@@ -82,7 +84,7 @@ export default class SetName extends Component {
 			// console.log('paired with ', data)
 
 			// Check if this is a rematch or new opponent
-			const isRematch = this.state.opponent_name === data.opp.name && this.state.game_streak.length > 0
+			const isRematch = this.state.opponent_uid === data.opp.uid && this.state.game_streak.length > 0
 			
 			this.setState({
 				next_turn_ply: data.mode=='m',
@@ -93,6 +95,7 @@ export default class SetName extends Component {
 				rematch_accepted: false,
 				opponent_disconnected: false,
 				opponent_name: data.opp.name,
+				opponent_uid: data.opp.uid,
 				game_streak: isRematch ? this.state.game_streak : [] // Only reset streak for new opponents
 			})
 
@@ -104,7 +107,6 @@ export default class SetName extends Component {
 		// Add rematch event handlers
 		this.socket.on('rematch_request', this.onRematchRequest.bind(this));
 		this.socket.on('rematch_accepted', this.onRematchAccepted.bind(this));
-		this.socket.on('rematch_rejected', this.onRematchRejected.bind(this));
 		this.socket.on('opponent_disconnected', this.onOpponentDisconnected.bind(this));
 
 
@@ -461,7 +463,6 @@ export default class SetName extends Component {
 			}
 		}
 
-		// For live games, emit that we're ready for new game
 		if (this.props.game_type == 'live') {
 			this.socket.emit('new_game_ready', {});
 		}
@@ -477,13 +478,6 @@ export default class SetName extends Component {
 
 	onRematchAccepted (data) {
 		this.startNewGame()
-	}
-
-	onRematchRejected (data) {
-		this.setState({
-			rematch_requested: false,
-			game_stat: 'Rematch declined'
-		})
 	}
 
 	onOpponentDisconnected (data) {

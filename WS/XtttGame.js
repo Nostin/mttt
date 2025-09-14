@@ -71,8 +71,17 @@ function onTurn(data) {
 
 // ----	--------------------------------------------	--------------------------------------------
 
+var rematch_started = new Map(); // key: "sockA:sockB" -> true
+
+function pairKeyBySockids(aSock, bSock) {
+  return aSock < bSock ? (aSock + ":" + bSock) : (bSock + ":" + aSock);
+}
+function pairKeyFromPlayer(p) {
+  return (p && p.opp) ? pairKeyBySockids(p.sockid, p.opp.sockid) : null;
+}
+
 // Handle rematch request
-function onRematchRequest(data) {
+function onRematchRequest() {
 	util.log("Rematch requested by: " + this.player.name);
 	
 	// Check if player has an opponent
@@ -92,51 +101,45 @@ function onRematchRequest(data) {
 // ----	--------------------------------------------	--------------------------------------------
 
 // Handle rematch acceptance
-function onRematchAccepted(data) {
+function onRematchAccepted() {
 	util.log("Rematch accepted by: " + this.player.name);
-	
-	// Check if player has an opponent
-	if (!this.player.opp) {
-		util.log("No opponent found for rematch acceptance from: " + this.player.name);
-		return;
-	}
-	
-	// Send rematch acceptance to opponent
-	io.to(this.player.opp.sockid).emit("rematch_accepted", {});
-	
-	util.log("Rematch acceptance sent to: " + this.player.opp.name);
+	var me = this.player;
+	if (!me || !me.opp) return;
+  
+	// Tell the requester their opponent accepted (so their UI resets)
+	io.to(me.opp.sockid).emit("rematch_accepted", {});
 }
 
 // ----	--------------------------------------------	--------------------------------------------
 
 // Handle new game ready
-function onNewGameReady(data) {
-	util.log("New game ready from: " + this.player.name);
-	
-	// Check if player has an opponent
-	if (!this.player.opp) {
-		util.log("No opponent found for new game ready from: " + this.player.name);
-		return;
+function onNewGameReady() {
+	util.log("New game ready from: " + (this.player && this.player.name));
+	var me = this.player;
+	if (!me || !me.opp) return;
+  
+	var key = pairKeyFromPlayer(me);
+	if (!key) return;
+  
+	if (rematch_started.get(key)) {
+	  util.log("Rematch already started for " + key + " — ignoring extra new_game_ready");
+	  return;
 	}
-	
-	// Reset player states for new game
-	this.player.status = 'paired';
-	this.player.mode = this.player.mode === 'm' ? 's' : 'm'; // Switch roles
-	
-	// Switch opponent's role too
-	this.player.opp.mode = this.player.opp.mode === 'm' ? 's' : 'm';
-	
-	// Notify both players that new game is starting
-	io.to(this.player.sockid).emit("pair_players", {
-		opp: {name: this.player.opp.name, uid: this.player.opp.uid}, 
-		mode: this.player.mode
-	});
-	io.to(this.player.opp.sockid).emit("pair_players", {
-		opp: {name: this.player.name, uid: this.player.uid}, 
-		mode: this.player.opp.mode
-	});
-	
-	util.log("New game started - " + this.player.name + " is " + this.player.mode + ", " + this.player.opp.name + " is " + this.player.opp.mode);
+	rematch_started.set(key, true);
+	// auto-expire guard after a short window, just in case
+	setTimeout(function(){ rematch_started.delete(key); }, 2000);
+  
+	// Flip roles once
+	me.status = 'paired';
+	me.opp.status = 'paired';
+	me.mode = (me.mode === 'm') ? 's' : 'm';
+	me.opp.mode = (me.opp.mode === 'm') ? 's' : 'm';
+  
+	// Notify both with the existing contract
+	io.to(me.sockid).emit("pair_players", { opp: { name: me.opp.name, uid: me.opp.uid }, mode: me.mode });
+	io.to(me.opp.sockid).emit("pair_players", { opp: { name: me.name,   uid: me.uid   }, mode: me.opp.mode });
+  
+	util.log("Rematch started — " + me.name + " is " + me.mode + ", " + me.opp.name + " is " + me.opp.mode);
 }
 
 // ----	--------------------------------------------	--------------------------------------------	
@@ -153,6 +156,11 @@ function onClientDisconnect() {
 	// util.log("onClientDisconnect: "+this.id);
 
 	var removePlayer = this.player;
+	if (removePlayer && removePlayer.opp) {
+		var key = pairKeyFromPlayer(removePlayer);
+		if (key) rematch_started.delete(key);
+	}
+
 	if (removePlayer) {
 		removePlayerFromArr(players, removePlayer);
 		removePlayerFromArr(players_avail, removePlayer);
