@@ -19,6 +19,8 @@
 -- Player clicks "Rematch" button and board resets for new game automatically
 - Win/Loss/Draw streaks are recorded for the current session and reset when the session ends. Displayed above the buttons.  Screenshot below.
 
+<img width="1811" height="865" alt="Screenshot 2025-09-14 at 11 14 29 PM" src="https://github.com/user-attachments/assets/0fb682d6-f2aa-4a55-8b28-3eaa01f374c7" />
+
 ### Files touched:
 - WS/XtttGame.js
 - react_ws_src/src/views/ttt/GameMain.js
