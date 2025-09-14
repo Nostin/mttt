@@ -1,23 +1,28 @@
-# Sean Thompson Updates to README
+# Sean Thompson - Feature Add
 
-## Task: Add an interesting, valuable feature to a legacy codebase without churning dependencies or refactoring 
+## Task
+Add an interesting, valuable feature to a legacy codebase without churning dependencies or refactoring 
 
 ### Scope:
 - Keep depedencies and libraries as-is (React 15, Socket.io 1.4.8)
 - Minimal, additive code in the existing style
-- Keep UI as-is, only small additions to support the new feature.
+- Keep UI as-is, only small additions to support the new feature
 
-### New Feature: Rematch with Win/Loss/Draw record
+### New Feature: Rematch + Win/Loss/Draw record
 
-- Rematch flow (vs human):
--- Existing player matching and play until game conclusion
--- Player A clicks "Rematch" button
--- Player B "Rematch" button is removed and "Accept Rematch" appears
--- Player B clicks "Accept Rematch" and the board resets
-- Rematch (vs computer): one click starts a new round.
--- Existing player matching and play until game conclusion
--- Player clicks "Rematch" button and board resets for new game automatically
-- Win/Loss/Draw streaks are recorded for the current session and reset when the session ends. Displayed above the buttons.  Screenshot below.
+### Live vs human
+- Play a normal round with existing pairing
+- Player A clicks Rematch
+- Player B’s Rematch button is hidden and Accept Rematch appears
+- Player B clicks Accept Rematch → board resets
+
+### vs computer
+- Play a normal round against computer opponent
+- Click Rematch → immediate new round
+
+### Streaks
+- Win/Loss/Draw results streak window shown above the buttons
+- Persists across rematches with the same opponent (keyed by opp.uid). Resets when the opponent changes or the session ends
 
 <img width="1811" height="865" alt="Screenshot 2025-09-14 at 11 14 29 PM" src="https://github.com/user-attachments/assets/0fb682d6-f2aa-4a55-8b28-3eaa01f374c7" />
 
