@@ -31,7 +31,13 @@ export default class SetName extends Component {
 				cell_vals: {},
 				next_turn_ply: true,
 				game_play: true,
-				game_stat: 'Start game'
+				game_stat: 'Start game',
+				game_completed: false,
+				rematch_requested: false,
+				rematch_accepted: false,
+				opponent_disconnected: false,
+				opponent_name: null,
+				game_streak: []
 			}
 		else {
 			this.sock_start()
@@ -40,7 +46,13 @@ export default class SetName extends Component {
 				cell_vals: {},
 				next_turn_ply: true,
 				game_play: false,
-				game_stat: 'Connecting'
+				game_stat: 'Connecting',
+				game_completed: false,
+				rematch_requested: false,
+				rematch_accepted: false,
+				opponent_disconnected: false,
+				opponent_name: null,
+				game_streak: []
 			}
 		}
 	}
@@ -69,10 +81,19 @@ export default class SetName extends Component {
 		this.socket.on('pair_players', function(data) { 
 			// console.log('paired with ', data)
 
+			// Check if this is a rematch or new opponent
+			const isRematch = this.state.opponent_name === data.opp.name && this.state.game_streak.length > 0
+			
 			this.setState({
 				next_turn_ply: data.mode=='m',
 				game_play: true,
-				game_stat: 'Playing with ' + data.opp.name
+				game_stat: 'Playing with ' + data.opp.name,
+				game_completed: false,
+				rematch_requested: false,
+				rematch_accepted: false,
+				opponent_disconnected: false,
+				opponent_name: data.opp.name,
+				game_streak: isRematch ? this.state.game_streak : [] // Only reset streak for new opponents
 			})
 
 		}.bind(this));
@@ -80,6 +101,11 @@ export default class SetName extends Component {
 
 		this.socket.on('opp_turn', this.turn_opp_live.bind(this));
 
+		// Add rematch event handlers
+		this.socket.on('rematch_request', this.onRematchRequest.bind(this));
+		this.socket.on('rematch_accepted', this.onRematchAccepted.bind(this));
+		this.socket.on('rematch_rejected', this.onRematchRejected.bind(this));
+		this.socket.on('opponent_disconnected', this.onOpponentDisconnected.bind(this));
 
 
 	}
@@ -106,7 +132,7 @@ export default class SetName extends Component {
 //	------------------------	------------------------	------------------------
 
 	render () {
-		const { cell_vals } = this.state
+		const { cell_vals, game_completed, rematch_requested, rematch_accepted, opponent_disconnected, game_streak } = this.state
 		// console.log(cell_vals)
 
 		return (
@@ -141,7 +167,46 @@ export default class SetName extends Component {
 					</table>
 				</div>
 
-				<button type='submit' onClick={this.end_game.bind(this)} className='button'><span>End Game <span className='fa fa-caret-right'></span></span></button>
+				{game_streak.length > 0 && (
+					<div id="game_streak">
+						<div id="streak_label">Streak:</div>
+						<div id="streak_results">
+							{game_streak.map((result, index) => (
+								<span key={index} className={`streak-result ${result.toLowerCase()}`}>
+									{result}
+								</span>
+							))}
+						</div>
+					</div>
+				)}
+
+				<div id="game_controls">
+					{game_completed && this.props.game_type != 'live' && (
+						<button type='button' onClick={this.handleRematch.bind(this)} className='button rematch-btn'>
+							<span>Rematch <span className='fa fa-refresh'></span></span>
+						</button>
+					)}
+					
+					{game_completed && this.props.game_type == 'live' && !opponent_disconnected && !rematch_requested && !rematch_accepted && (
+						<button type='button' onClick={this.handleRematch.bind(this)} className='button rematch-btn'>
+							<span>Rematch <span className='fa fa-refresh'></span></span>
+						</button>
+					)}
+					
+					{game_completed && this.props.game_type == 'live' && !opponent_disconnected && rematch_requested && !rematch_accepted && (
+						<button type='button' disabled className='button rematch-btn disabled'>
+							<span>Rematch Requested <span className='fa fa-clock-o'></span></span>
+						</button>
+					)}
+					
+					{game_completed && this.props.game_type == 'live' && !opponent_disconnected && rematch_accepted && (
+						<button type='button' onClick={this.handleAcceptRematch.bind(this)} className='button accept-btn'>
+							<span>Accept Rematch <span className='fa fa-check'></span></span>
+						</button>
+					)}
+
+					<button type='submit' onClick={this.end_game.bind(this)} className='button'><span>End Game <span className='fa fa-caret-right'></span></span></button>
+				</div>
 
 			</div>
 		)
@@ -304,21 +369,38 @@ export default class SetName extends Component {
 			TweenMax.killAll(true)
 			TweenMax.from('td.win', 1, {opacity: 0, ease: Linear.easeIn})
 
+			// Determine result for streak
+			const isPlayerWin = cell_vals[set[0]] == 'x'
+			const newStreak = [...this.state.game_streak, isPlayerWin ? 'W' : 'L']
+
 			this.setState({
 				game_stat: (cell_vals[set[0]]=='x'?'You':'Opponent')+' win',
-				game_play: false
+				game_play: false,
+				game_completed: true,
+				game_streak: newStreak
 			})
 
-			this.socket && this.socket.disconnect();
+			// Don't disconnect socket for live games - needed for rematch
+			if (this.props.game_type != 'live') {
+				this.socket && this.socket.disconnect();
+			}
 
 		} else if (fin) {
 		
+			// Add draw to streak
+			const newStreak = [...this.state.game_streak, 'D']
+
 			this.setState({
 				game_stat: 'Draw',
-				game_play: false
+				game_play: false,
+				game_completed: true,
+				game_streak: newStreak
 			})
 
-			this.socket && this.socket.disconnect();
+			// Don't disconnect socket for live games - needed for rematch
+			if (this.props.game_type != 'live') {
+				this.socket && this.socket.disconnect();
+			}
 
 		} else {
 			this.props.game_type!='live' && this.state.next_turn_ply && setTimeout(this.turn_comp.bind(this), rand_to_fro(500, 1000));
@@ -328,6 +410,91 @@ export default class SetName extends Component {
 			})
 		}
 		
+	}
+
+
+//	------------------------	------------------------	------------------------
+	handleRematch () {
+		if (this.props.game_type != 'live') {
+			// Computer opponent - start new game immediately
+			this.startNewGame()
+		} else {
+			// Live opponent - request rematch
+			this.socket.emit('rematch_request', {});
+			this.setState({
+				rematch_requested: true,
+				game_stat: 'Rematch requested...'
+			})
+		}
+	}
+
+	handleAcceptRematch () {
+		this.socket.emit('rematch_accepted', {});
+		this.startNewGame()
+	}
+
+	startNewGame (resetStreak = false) {
+		// Reset game state
+		const newState = {
+			cell_vals: {},
+			next_turn_ply: true,
+			game_play: this.props.game_type != 'live',
+			game_stat: this.props.game_type != 'live' ? 'Start game' : 'Playing with ' + (this.state.opponent_name || 'Opponent'),
+			game_completed: false,
+			rematch_requested: false,
+			rematch_accepted: false,
+			opponent_disconnected: false
+		}
+
+		// Only reset streak if explicitly requested (for new opponents)
+		if (resetStreak) {
+			newState.game_streak = []
+		}
+
+		this.setState(newState)
+
+		// Clear win highlighting
+		for (let i = 1; i <= 9; i++) {
+			const cellRef = this.refs['c' + i]
+			if (cellRef) {
+				cellRef.classList.remove('win')
+			}
+		}
+
+		// For live games, emit that we're ready for new game
+		if (this.props.game_type == 'live') {
+			this.socket.emit('new_game_ready', {});
+		}
+	}
+
+	onRematchRequest (data) {
+		this.setState({
+			rematch_accepted: true,
+			opponent_name: data.opponent_name,
+			game_stat: 'Rematch requested by ' + data.opponent_name
+		})
+	}
+
+	onRematchAccepted (data) {
+		this.startNewGame()
+	}
+
+	onRematchRejected (data) {
+		this.setState({
+			rematch_requested: false,
+			game_stat: 'Rematch declined'
+		})
+	}
+
+	onOpponentDisconnected (data) {
+		this.setState({
+			game_stat: 'Opponent disconnected',
+			game_play: false,
+			game_completed: true,
+			rematch_requested: false,
+			rematch_accepted: false,
+			opponent_disconnected: true
+		})
 	}
 
 //	------------------------	------------------------	------------------------

@@ -69,19 +69,103 @@ function onTurn(data) {
 	// updAdmin("Q answer - game - qgid:"+data.qgid + "  --  usr:"+this.player.mode + " - uid:"+this.player.uid + "  --  qnum:"+data.qnum + "  --  ans:"+data.ansnum);
 };
 
+// ----	--------------------------------------------	--------------------------------------------
+
+// Handle rematch request
+function onRematchRequest(data) {
+	util.log("Rematch requested by: " + this.player.name);
+	
+	// Check if player has an opponent
+	if (!this.player.opp) {
+		util.log("No opponent found for rematch request from: " + this.player.name);
+		return;
+	}
+	
+	// Send rematch request to opponent
+	io.to(this.player.opp.sockid).emit("rematch_request", {
+		opponent_name: this.player.name
+	});
+	
+	util.log("Rematch request sent to: " + this.player.opp.name);
+}
+
+// ----	--------------------------------------------	--------------------------------------------
+
+// Handle rematch acceptance
+function onRematchAccepted(data) {
+	util.log("Rematch accepted by: " + this.player.name);
+	
+	// Check if player has an opponent
+	if (!this.player.opp) {
+		util.log("No opponent found for rematch acceptance from: " + this.player.name);
+		return;
+	}
+	
+	// Send rematch acceptance to opponent
+	io.to(this.player.opp.sockid).emit("rematch_accepted", {});
+	
+	util.log("Rematch acceptance sent to: " + this.player.opp.name);
+}
+
+// ----	--------------------------------------------	--------------------------------------------
+
+// Handle new game ready
+function onNewGameReady(data) {
+	util.log("New game ready from: " + this.player.name);
+	
+	// Check if player has an opponent
+	if (!this.player.opp) {
+		util.log("No opponent found for new game ready from: " + this.player.name);
+		return;
+	}
+	
+	// Reset player states for new game
+	this.player.status = 'paired';
+	this.player.mode = this.player.mode === 'm' ? 's' : 'm'; // Switch roles
+	
+	// Switch opponent's role too
+	this.player.opp.mode = this.player.opp.mode === 'm' ? 's' : 'm';
+	
+	// Notify both players that new game is starting
+	io.to(this.player.sockid).emit("pair_players", {
+		opp: {name: this.player.opp.name, uid: this.player.opp.uid}, 
+		mode: this.player.mode
+	});
+	io.to(this.player.opp.sockid).emit("pair_players", {
+		opp: {name: this.player.name, uid: this.player.uid}, 
+		mode: this.player.opp.mode
+	});
+	
+	util.log("New game started - " + this.player.name + " is " + this.player.mode + ", " + this.player.opp.name + " is " + this.player.opp.mode);
+}
+
 // ----	--------------------------------------------	--------------------------------------------	
 // ----	--------------------------------------------	--------------------------------------------	
+
+// remove player from players and available players arrays
+function removePlayerFromArr(arr, item) {
+	var i = arr.indexOf(item);
+	if (i > -1) arr.splice(i, 1);
+}
 
 // Socket client has disconnected
 function onClientDisconnect() {
 	// util.log("onClientDisconnect: "+this.id);
 
-
 	var removePlayer = this.player;
-	players.splice(players.indexOf(removePlayer), 1);
-	players_avail.splice(players_avail.indexOf(removePlayer), 1);
+	if (removePlayer) {
+		removePlayerFromArr(players, removePlayer);
+		removePlayerFromArr(players_avail, removePlayer);
 
+		// If player had an opponent, notify them of disconnection
+		if (removePlayer.opp) {
+		io.to(removePlayer.opp.sockid).emit("opponent_disconnected", {});
+		// Remove opponent relationship
+		removePlayer.opp.opp = null;
+		}
+	}
 
+	// Remove rematch event handlers
 	if (this.status == "admin") {
 		util.log("Admin has disconnected: "+this.uid);
 //		updAdmin("Admin has disconnected - uid:"+this.uid + "  --  "+this.name);
@@ -107,5 +191,10 @@ set_game_sock_handlers = function (socket) {
 	socket.on("ply_turn", onTurn);
 
 	socket.on("disconnect", onClientDisconnect);
+
+	// Add rematch event handlers
+	socket.on("rematch_request", onRematchRequest);
+	socket.on("rematch_accepted", onRematchAccepted);
+	socket.on("new_game_ready", onNewGameReady);
 
 };
